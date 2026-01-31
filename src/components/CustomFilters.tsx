@@ -1,4 +1,4 @@
-import type { Theme, CustomFilter, EventMessage } from '../types'
+import type { Theme, CustomFilter } from '../types'
 
 interface CustomFiltersProps {
     theme: Theme

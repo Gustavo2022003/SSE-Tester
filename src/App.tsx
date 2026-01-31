@@ -154,7 +154,7 @@ export default function App() {
                     type: 'message',
                     data: event.data,
                     raw: JSON.stringify(event, null, 2),
-                    parsedType: parsedType,
+                    ...(parsedType && { parsedType }),
                 }
                 setEvents((prev) => [newEvent, ...prev.slice(0, 99)])
             }
