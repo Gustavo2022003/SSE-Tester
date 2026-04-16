@@ -1,6 +1,5 @@
 import http from 'http'
 import https from 'https'
-import url from 'url'
 import { readFileSync } from 'fs'
 
 const PORT = process.env.PROXY_PORT || 3001
@@ -23,9 +22,15 @@ const server = http.createServer((req, res) => {
     return
   }
 
-  const queryParams = new url.URLSearchParams(url.parse(req.url, true).search)
-  const targetUrl = queryParams.get('url')
-  const authHeader = queryParams.get('auth')
+  // Usar WHATWG URL API em vez do deprecated url.parse()
+  const reqUrl = new URL(req.url, `http://localhost:${PORT}`)
+  const targetUrl = reqUrl.searchParams.get('url')
+  const authFromHeader = req.headers.authorization
+  const authFromQuery =
+    reqUrl.searchParams.get('auth') ||
+    reqUrl.searchParams.get('authorization') ||
+    reqUrl.searchParams.get('token')
+  const authHeader = (authFromHeader || authFromQuery || '').trim()
 
   if (!targetUrl) {
     res.writeHead(400, { 'Content-Type': 'application/json' })
@@ -47,16 +52,20 @@ const server = http.createServer((req, res) => {
     }
 
     if (authHeader) {
-      options.headers['Authorization'] = authHeader
+      // Se o token não começar com "Bearer ", adiciona automaticamente
+      const authValue = authHeader.startsWith('Bearer ')
+        ? authHeader
+        : `Bearer ${authHeader}`
+      options.headers['Authorization'] = authValue
     }
 
-    console.log(`Conectando a: ${targetUrl}`)
+    console.log(`[SSE Proxy] Conectando a: ${targetUrl}`)
     if (authHeader) {
-      console.log(`Com autenticação: ${authHeader.substring(0, 20)}...`)
+      console.log(`[SSE Proxy] Com autenticação: Bearer ${authHeader.substring(0, 20)}...`)
     }
 
     const proxyReq = protocol.request(parsedUrl, options, (proxyRes) => {
-      console.log(`Status: ${proxyRes.statusCode}`)
+      console.log(`[SSE Proxy] Status: ${proxyRes.statusCode}`)
       
       if (proxyRes.statusCode === 401) {
         res.writeHead(401, { 'Content-Type': 'text/event-stream' })
@@ -89,7 +98,7 @@ const server = http.createServer((req, res) => {
       })
 
       proxyRes.on('error', (err) => {
-        console.error('Proxy response error:', err.message)
+        console.error('[SSE Proxy] Erro na resposta:', err.message)
         res.write('event: error\n')
         res.write(`data: {"error": "${err.message}"}\n\n`)
         res.end()
@@ -97,14 +106,14 @@ const server = http.createServer((req, res) => {
     })
 
     proxyReq.on('error', (err) => {
-      console.error('Proxy request error:', err.message)
+      console.error('[SSE Proxy] Erro na requisição:', err.message)
       res.writeHead(500, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: err.message }))
     })
 
     proxyReq.end()
   } catch (err) {
-    console.error('Error:', err instanceof Error ? err.message : String(err))
+    console.error('[SSE Proxy] Erro:', err instanceof Error ? err.message : String(err))
     res.writeHead(400, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ error: 'Invalid URL' }))
   }
